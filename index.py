@@ -1,7 +1,8 @@
 import cv2
 import os
-import pytesseract
+import easyocr
 from PIL import Image, ImageEnhance, ImageOps
+import numpy as np
 
 
 def extract_screenshots(video_path, output_dir):
@@ -81,8 +82,17 @@ def extract_text_from_images(image_dir, output_txt_path):
         # Invert colors to make text white and background dark
         inverted_image = ImageOps.invert(greyscale_image)
 
-        # Use Tesseract to do OCR on the inverted image
-        text = pytesseract.image_to_string(inverted_image, lang='eng')
+        # Convert the PIL image to a numpy array
+        inverted_image_np = np.array(inverted_image)
+
+       # Initialize EasyOCR reader
+        reader = easyocr.Reader(['en'])
+
+        # Perform OCR on inverted image
+        result = reader.readtext(inverted_image_np)
+
+        # Extract text from the result
+        text = ' '.join([entry[1] for entry in result])
 
         # Clean and store the detected text
         cleaned_text = text.strip()
