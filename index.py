@@ -1,7 +1,7 @@
 import cv2
 import os
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageOps
 
 
 def extract_screenshots(video_path, output_dir):
@@ -69,10 +69,20 @@ def extract_text_from_images(image_dir, output_txt_path):
 
         # Crop the bottom half of the image
         width, height = image.size
-        cropped_image = image.crop((0, height // 2, width, height))
+        cropped_image = image.crop((0, height - 120, width, height))
 
-        # Use Tesseract to do OCR on the cropped image
-        text = pytesseract.image_to_string(cropped_image, lang='eng')
+        # Convert cropped image to greyscale
+        greyscale_image = cropped_image.convert('L')
+
+        # Enhance contrast
+        contrast_enhancer = ImageEnhance.Contrast(greyscale_image)
+        greyscale_image = contrast_enhancer.enhance(1.5)  # Increase contrast
+
+        # Invert colors to make text white and background dark
+        inverted_image = ImageOps.invert(greyscale_image)
+
+        # Use Tesseract to do OCR on the inverted image
+        text = pytesseract.image_to_string(inverted_image, lang='eng')
 
         # Clean and store the detected text
         cleaned_text = text.strip()
