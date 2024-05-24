@@ -102,7 +102,7 @@ def extract_text_from_images(image_dir, output_txt_path):
     # Write the unique subtitles to a text file
     with open(output_txt_path, 'w') as f:
         for subtitle in subtitles:
-            f.write(subtitle + "\n")
+            f.write(subtitle + " ")
 
     print("Finished extracting subtitles.")
 
