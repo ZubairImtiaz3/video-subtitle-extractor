@@ -3,7 +3,8 @@ import os
 import easyocr
 from PIL import Image, ImageEnhance, ImageOps
 import numpy as np
-
+import re
+from difflib import SequenceMatcher
 
 def extract_screenshots(video_path, output_dir):
     # Create the output directory if it doesn't exist
@@ -53,27 +54,66 @@ def extract_screenshots(video_path, output_dir):
     print("Released video capture.")
 
 
+def clean_text(text):
+    # Remove extra spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    # Replace incorrect punctuation and add full stops where appropriate
+    text = re.sub(r'[;:]', '.', text)
+    return text
+
+
+def find_subtitle_region(image, reader):
+    # Divide the image into 3 horizontal regions: top, center, bottom
+    width, height = image.size
+    top_region = image.crop((0, 0, width, height // 3))
+    center_region = image.crop((0, height // 3, width, 2 * height // 3))
+    bottom_region = image.crop((0, 2 * height // 3, width, height))
+
+    # Perform OCR on each region
+    top_result = reader.readtext(np.array(top_region))
+    center_result = reader.readtext(np.array(center_region))
+    bottom_result = reader.readtext(np.array(bottom_region))
+
+    # Count the number of text detections in each region
+    top_text_count = len(top_result)
+    center_text_count = len(center_result)
+    bottom_text_count = len(bottom_result)
+
+    # Determine the region with the most text detections
+    if top_text_count >= center_text_count and top_text_count >= bottom_text_count:
+        return top_region
+    elif center_text_count >= top_text_count and center_text_count >= bottom_text_count:
+        return center_region
+    else:
+        return bottom_region
+
+
+def similar(a, b, threshold=0.7):
+    # Use SequenceMatcher to compare two strings
+    return SequenceMatcher(None, a, b).ratio() >= threshold
+
+
 def extract_text_from_images(image_dir, output_txt_path):
     print(f"Started extracting subtitles...")
 
     # Store the detected subtitles
     subtitles = []
 
+    # Initialize EasyOCR reader
+    reader = easyocr.Reader(['en'])
+
     # List all image files in the directory
     image_files = sorted(
         [f for f in os.listdir(image_dir) if f.endswith('.jpg')])
 
+    last_subtitles = []  # List to keep track of the last few subtitles
     for image_file in image_files:
         # Load the image
         image_path = os.path.join(image_dir, image_file)
         image = Image.open(image_path)
 
-        # Crop the bottom half of the image
-        width, height = image.size
-        cropped_image = image.crop((0, height - 120, width, height))
-
-        # Convert cropped image to greyscale
-        greyscale_image = cropped_image.convert('L')
+        # Convert the image to greyscale
+        greyscale_image = image.convert('L')
 
         # Enhance contrast
         contrast_enhancer = ImageEnhance.Contrast(greyscale_image)
@@ -82,27 +122,35 @@ def extract_text_from_images(image_dir, output_txt_path):
         # Invert colors to make text white and background dark
         inverted_image = ImageOps.invert(greyscale_image)
 
-        # Convert the PIL image to a numpy array
-        inverted_image_np = np.array(inverted_image)
+        # Find the subtitle region
+        subtitle_region = find_subtitle_region(inverted_image, reader)
 
-       # Initialize EasyOCR reader
-        reader = easyocr.Reader(['en'])
-
-        # Perform OCR on inverted image
-        result = reader.readtext(inverted_image_np)
+        # Perform OCR on the subtitle region
+        result = reader.readtext(np.array(subtitle_region))
 
         # Extract text from the result
         text = ' '.join([entry[1] for entry in result])
 
-        # Clean and store the detected text
-        cleaned_text = text.strip()
-        if cleaned_text and (len(subtitles) == 0 or cleaned_text != subtitles[-1]):
-            subtitles.append(cleaned_text)
+        # Clean the detected text
+        cleaned_text = clean_text(text)
+
+        # Check for duplicates and similarity
+        if cleaned_text:
+            if len(last_subtitles) < 5:  # Keep track of the last 5 subtitles
+                last_subtitles.append(cleaned_text)
+            else:
+                last_subtitles.pop(0)
+                last_subtitles.append(cleaned_text)
+
+            # Check if the cleaned text is similar to any of the last few subtitles
+            if all(not similar(cleaned_text, subtitle) for subtitle in last_subtitles[:-1]):
+                subtitles.append(cleaned_text)
+                print(f"Added subtitle: {cleaned_text}")
 
     # Write the unique subtitles to a text file
     with open(output_txt_path, 'w') as f:
         for subtitle in subtitles:
-            f.write(subtitle + " ")
+            f.write(subtitle + "\n")  # Add a newline for readability
 
     print("Finished extracting subtitles.")
 
