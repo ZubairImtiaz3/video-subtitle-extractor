@@ -5,6 +5,9 @@ from PIL import Image, ImageEnhance, ImageOps
 import numpy as np
 import re
 from difflib import SequenceMatcher
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import threading
 
 def extract_screenshots(video_path, output_dir):
     # Create the output directory if it doesn't exist
@@ -155,11 +158,95 @@ def extract_text_from_images(image_dir, output_txt_path):
     print("Finished extracting subtitles.")
 
 
-# Usage example
-# Make sure this path is correct
-video_path = "C:/Users/zubai/Desktop/New folder/Try.mov"
-output_dir = "./output_screenshots"
-output_txt_path = "./output_subtitles.txt"
+def log_message(message, text_widget):
+    text_widget.insert(tk.END, message + "\n")
+    text_widget.see(tk.END)  # Scroll to the end
+    text_widget.update_idletasks()
 
-extract_screenshots(video_path, output_dir)
-extract_text_from_images(output_dir, output_txt_path)
+
+def extract_subtitles(video_path, output_dir, text_widget):
+    try:
+        output_screenshots_dir = os.path.join(output_dir, "output_screenshots")
+        output_txt_path = os.path.join(output_dir, "output_subtitles.txt")
+
+        log_message("Extracting screenshots...", text_widget)
+        extract_screenshots(video_path, output_screenshots_dir)
+        log_message("Screenshots extracted.", text_widget)
+
+        log_message("Extracting text from images...", text_widget)
+        extract_text_from_images(output_screenshots_dir, output_txt_path)
+        log_message("Text extraction completed. Subtitles saved to output_subtitles.txt", text_widget)
+
+    except Exception as e:
+        log_message(f"Error: {str(e)}", text_widget)
+
+
+def start_extraction(video_path, output_dir, text_widget):
+    if not video_path:
+        messagebox.showerror("Error", "Please select a video file.")
+        return
+
+    if not output_dir:
+        messagebox.showerror("Error", "Please select an output directory.")
+        return
+
+    # Start the extraction in a separate thread to keep the GUI responsive
+    threading.Thread(target=extract_subtitles, args=(video_path, output_dir, text_widget)).start()
+
+
+def create_gui():
+    root = tk.Tk()
+    root.title("Subtitle Extractor")
+
+    # Set default output directory to desktop
+    default_output_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+
+    # Video Path Selection
+    video_label = tk.Label(root, text="Select Video:")
+    video_label.pack(pady=5)
+
+    video_entry = tk.Entry(root, width=50)
+    video_entry.pack(pady=5)
+
+    def browse_video():
+        file_path = filedialog.askopenfilename(filetypes=[("Video Files", "*.mp4 *.avi *.mkv *.mov")])
+        if file_path:
+            video_entry.delete(0, tk.END)
+            video_entry.insert(0, file_path)
+
+    browse_video_btn = tk.Button(root, text="Browse", command=browse_video)
+    browse_video_btn.pack(pady=5)
+
+    # Output Directory Selection
+    output_label = tk.Label(root, text="Output Directory:")
+    output_label.pack(pady=5)
+
+    output_entry = tk.Entry(root, width=50)
+    output_entry.insert(0, default_output_dir)
+    output_entry.pack(pady=5)
+
+    def browse_output_dir():
+        dir_path = filedialog.askdirectory()
+        if dir_path:
+            output_entry.delete(0, tk.END)
+            output_entry.insert(0, dir_path)
+
+    browse_output_btn = tk.Button(root, text="Browse", command=browse_output_dir)
+    browse_output_btn.pack(pady=5)
+
+    # Log Display
+    log_label = tk.Label(root, text="Logs:")
+    log_label.pack(pady=5)
+
+    log_text = tk.Text(root, width=80, height=15, wrap=tk.WORD)
+    log_text.pack(pady=5)
+
+    # Extract Button
+    extract_btn = tk.Button(root, text="Extract", command=lambda: start_extraction(video_entry.get(), output_entry.get(), log_text))
+    extract_btn.pack(pady=20)
+
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    create_gui()
